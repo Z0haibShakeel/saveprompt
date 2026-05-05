@@ -6,6 +6,12 @@
 <IfModule mod_rewrite.c>
   RewriteEngine On
   RewriteBase /
+  
+  # Redirect root to dist folder if it exists
+  RewriteCond %{REQUEST_URI} !^/dist/
+  RewriteCond %{HTTP_HOST} ^(www\.)?.*$ [NC]
+  RewriteRule ^(.*)$ dist/$1 [L]
+
   RewriteRule ^index\.html$ - [L]
   RewriteCond %{REQUEST_FILENAME} !-f
   RewriteCond %{REQUEST_FILENAME} !-d
