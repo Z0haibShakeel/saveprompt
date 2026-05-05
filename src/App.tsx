@@ -89,7 +89,6 @@ interface ProjectImage {
   bracketContent: BracketItem[];
   order: number;
   chatLink?: string;
-  fileDate?: number; // timestamp of the file's last modified date
 }
 
 type ProjectStatus = 'Pending' | 'Uploaded';
@@ -1452,7 +1451,6 @@ function ProjectForm({
         url: reader.result as string,
         bracketContent: extractBrackets(formData.masterPrompt).map(b => ({ title: b, value: '' })),
         order: images.length,
-        fileDate: file.lastModified,
       };
       setImages(prev => [...prev, newImage]);
     };
@@ -1537,7 +1535,6 @@ function ProjectForm({
               id: Math.random().toString(36).substring(7), 
               url: base64String, 
               order: prev.length,
-              fileDate: file.lastModified,
               bracketContent: bracketTitles.map(title => ({ title, value: '' }))
             }
           ];
@@ -1569,18 +1566,6 @@ function ProjectForm({
     setImages(prev => prev.filter(img => img.id !== id));
   };
 
-  const sortImagesByDate = () => {
-    setImages(prev => {
-      const sorted = [...prev].sort((a, b) => {
-        const dateA = a.fileDate || 0;
-        const dateB = b.fileDate || 0;
-        return dateA - dateB;
-      }).map((img, idx) => ({ ...img, order: idx }));
-      notify('Images sorted by creation date (Oldest first)', 'success');
-      return sorted;
-    });
-  };
-
   const replaceImage = (imageId: string, file: File) => {
     const reader = new FileReader();
     reader.onloadend = async () => {
@@ -1594,7 +1579,7 @@ function ProjectForm({
 
       // Update in state
       setImages(prev => prev.map(img => 
-        img.id === imageId ? { ...img, url: base64String, fileDate: file.lastModified } : img
+        img.id === imageId ? { ...img, url: base64String } : img
       ));
       
       notify('Image replaced successfully', 'success');
@@ -1762,15 +1747,6 @@ function ProjectForm({
                   Add Placeholders
                 </button>
               </div>
-              <button
-                type="button"
-                onClick={sortImagesByDate}
-                className="px-4 py-2 bg-slate-50 text-slate-600 hover:bg-slate-100 rounded-xl font-semibold transition-all flex items-center gap-2 text-sm"
-                title="Sort by creation date"
-              >
-                <Clock className="w-4 h-4" />
-                Sort by Date
-              </button>
               <label className="cursor-pointer px-4 py-2 bg-indigo-50 text-indigo-600 hover:bg-indigo-100 rounded-xl font-semibold transition-all flex items-center gap-2 text-sm">
                 <PlusCircle className="w-4 h-4" />
                 Add Images
