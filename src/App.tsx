@@ -112,6 +112,14 @@ interface Project {
 }
 
 // --- Helpers ---
+const generateId = () => {
+  try {
+    return crypto.randomUUID();
+  } catch (e) {
+    return Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+  }
+};
+
 const extractBrackets = (text: string): string[] => {
   const regex = /\[([^\]]+)\]/g;
   const matches = [];
@@ -1473,7 +1481,7 @@ function ProjectForm({
       notify('Uploading image...', 'info');
       const publicUrl = await uploadImageToSupabase(file);
       const newImage: ProjectImage = {
-        id: crypto.randomUUID(),
+        id: generateId(),
         url: publicUrl,
         bracketContent: extractBrackets(formData.masterPrompt).map(b => ({ title: b, value: '' })),
         order: images.length,
@@ -1487,7 +1495,7 @@ function ProjectForm({
 
   const addPlaceholderImages = () => {
     const newPlaceholders: ProjectImage[] = Array.from({ length: numPlaceholders }).map((_, i) => ({
-      id: crypto.randomUUID(),
+      id: generateId(),
       url: PLACEHOLDER_IMAGE_URL,
       bracketContent: extractBrackets(formData.masterPrompt).map(b => ({ title: b, value: '' })),
       order: images.length + i,

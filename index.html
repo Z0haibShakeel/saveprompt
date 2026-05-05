@@ -15,8 +15,21 @@
     </script>
   </head>
   <body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.tsx"></script>
+    <div id="root">
+      <div style="display: flex; align-items: center; justify-content: center; min-height: 100vh; font-family: sans-serif; color: #64748b;">
+        <div style="text-align: center;">
+          <div style="width: 48px; height: 48px; background: #fbbf24; border-radius: 12px; margin: 0 auto 16px; animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;"></div>
+          <p>Loading ForgeOS...</p>
+        </div>
+      </div>
+    </div>
+    <style>
+      @keyframes pulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: .5; }
+      }
+    </style>
+    <script type="module" src="src/main.tsx"></script>
   </body>
 </html>
 
