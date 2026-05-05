@@ -135,6 +135,27 @@ const getReplacedPrompt = (masterPrompt: string, bracketContent: BracketItem[]):
   return finalPrompt;
 };
 
+const uploadImageToSupabase = async (file: File): Promise<string> => {
+  const fileExt = file.name.split('.').pop();
+  const fileName = `${Math.random().toString(36).substring(2)}-${Date.now()}.${fileExt}`;
+  const filePath = `uploads/${fileName}`;
+
+  const { error: uploadError } = await supabase.storage
+    .from('images')
+    .upload(filePath, file);
+
+  if (uploadError) {
+    console.error('Error uploading image:', uploadError);
+    throw new Error(`Upload failed: ${uploadError.message}`);
+  }
+
+  const { data: { publicUrl } } = supabase.storage
+    .from('images')
+    .getPublicUrl(filePath);
+
+  return publicUrl;
+};
+
 function CopyButton({ text, label = "" }: { text: string; label?: string }) {
   const [copied, setCopied] = useState(false);
 
@@ -521,7 +542,11 @@ export default function App() {
           .from('projects_table')
           .upsert({ id: 1, data: projects });
 
-        if (error) throw error;
+        if (error) {
+          console.error("Supabase save error:", error);
+          notify(`Supabase Save Error: ${error.message}`, 'error');
+          throw error;
+        }
       } catch (e) {
         console.error("Supabase save error:", e);
       }
@@ -1443,18 +1468,21 @@ function ProjectForm({
   // Base64 encoded 1x1 transparent GIF for placeholder
   const PLACEHOLDER_IMAGE_URL = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
 
-  const addImage = (file: File) => {
-    const reader = new FileReader();
-    reader.onloadend = () => {
+  const addImage = async (file: File) => {
+    try {
+      notify('Uploading image...', 'info');
+      const publicUrl = await uploadImageToSupabase(file);
       const newImage: ProjectImage = {
         id: crypto.randomUUID(),
-        url: reader.result as string,
+        url: publicUrl,
         bracketContent: extractBrackets(formData.masterPrompt).map(b => ({ title: b, value: '' })),
         order: images.length,
       };
       setImages(prev => [...prev, newImage]);
-    };
-    reader.readAsDataURL(file);
+      notify('Image uploaded successfully', 'success');
+    } catch (err: any) {
+      notify(err.message || 'Upload failed', 'error');
+    }
   };
 
   const addPlaceholderImages = () => {
@@ -1510,38 +1538,32 @@ function ProjectForm({
     }));
   }, [formData.masterPrompt]);
 
-  const handleImageUpload = (e: ChangeEvent<HTMLInputElement>) => {
+  const handleImageUpload = async (e: ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files) return;
 
     const bracketTitles = extractBrackets(formData.masterPrompt);
 
-    Array.from(files).forEach((file: File) => {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        const base64String = reader.result as string;
+    const fileList = Array.from(files) as File[];
+    for (const file of fileList) {
+      try {
+        notify(`Uploading ${file.name}...`, 'info');
+        const publicUrl = await uploadImageToSupabase(file);
         
-        // Duplicate Prevention Check
-        setImages(prev => {
-          const isDuplicate = prev.some(img => img.url === base64String);
-          if (isDuplicate) {
-            notify(`Duplicate image skipped: ${file.name}`, 'info');
-            return prev;
+        setImages(prev => [
+          ...prev, 
+          { 
+            id: Math.random().toString(36).substring(7), 
+            url: publicUrl, 
+            order: prev.length,
+            bracketContent: bracketTitles.map(title => ({ title, value: '' }))
           }
-
-          return [
-            ...prev, 
-            { 
-              id: Math.random().toString(36).substring(7), 
-              url: base64String, 
-              order: prev.length,
-              bracketContent: bracketTitles.map(title => ({ title, value: '' }))
-            }
-          ];
-        });
-      };
-      reader.readAsDataURL(file);
-    });
+        ]);
+        notify(`${file.name} uploaded!`, 'success');
+      } catch (err: any) {
+        notify(`Failed to upload ${file.name}: ${err.message}`, 'error');
+      }
+    }
   };
 
   const updateBracketValue = (imageId: string, index: number, val: string) => {
@@ -1566,25 +1588,20 @@ function ProjectForm({
     setImages(prev => prev.filter(img => img.id !== id));
   };
 
-  const replaceImage = (imageId: string, file: File) => {
-    const reader = new FileReader();
-    reader.onloadend = async () => {
-      const base64String = reader.result as string;
+  const replaceImage = async (imageId: string, file: File) => {
+    try {
+      notify('Replacing image...', 'info');
+      const publicUrl = await uploadImageToSupabase(file);
       
-      // Duplicate check for replacement as well
-      const isDuplicate = images.some(img => img.url === base64String);
-      if (isDuplicate) {
-        return notify('This image is already in the project', 'info');
-      }
-
       // Update in state
       setImages(prev => prev.map(img => 
-        img.id === imageId ? { ...img, url: base64String } : img
+        img.id === imageId ? { ...img, url: publicUrl } : img
       ));
       
       notify('Image replaced successfully', 'success');
-    };
-    reader.readAsDataURL(file);
+    } catch (err: any) {
+      notify(`Replacement failed: ${err.message}`, 'error');
+    }
   };
 
   const handleSubmit = (e: FormEvent) => {
@@ -1866,11 +1883,26 @@ function ProjectDetailView({
     
     try {
       const zip = new JSZip();
-      project.images.forEach((img, idx) => {
-        const base64Data = img.url.split(',')[1];
-        const extension = img.url.split(';')[0].split('/')[1] || 'jpg';
-        zip.file(`image-${idx + 1}.${extension}`, base64Data, { base64: true });
+      
+      const downloadPromises = project.images.map(async (img, idx) => {
+        let blob;
+        let extension = 'jpg';
+
+        if (img.url.startsWith('data:')) {
+          // Handle base64 (placeholders or old data)
+          const base64Data = img.url.split(',')[1];
+          extension = img.url.split(';')[0].split('/')[1] || 'jpg';
+          zip.file(`image-${idx + 1}.${extension}`, base64Data, { base64: true });
+        } else {
+          // Handle URLs
+          const response = await fetch(img.url);
+          blob = await response.blob();
+          extension = img.url.split('.').pop() || 'jpg';
+          zip.file(`image-${idx + 1}.${extension}`, blob);
+        }
       });
+
+      await Promise.all(downloadPromises);
       
       const content = await zip.generateAsync({ type: "blob" });
       const link = document.createElement('a');
